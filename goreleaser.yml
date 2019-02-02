@@ -14,18 +14,18 @@ build:
     - arm64
 brew:
   github:
-    owner: bep
+    owner: sequra
     name: homebrew-tap
   folder: Formula
-  homepage:  "https://github.com/bep/s3deploy"
+  homepage:  "https://github.com/sequra/s3deploy"
   description: "Deploy static websites to Amazon S3 with Gzip and headers support."
   test: |
     system "#{bin}/s3deploy", "-h"
 nfpm:
   formats:
       - deb
-  vendor: "bep"
-  homepage: "https://github.com/bep/s3deploy"
+  vendor: "sequra"
+  homepage: "https://github.com/sequra/s3deploy"
   maintainer: "<Bjørn Erik Pedersen bjorn.erik.pedersen@gmail.com>"
   description: "A powerful tool to deploy static websites to Amazon S3 with Gzip and custom headers support."
   license: "MIT"

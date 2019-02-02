@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/bep/s3deploy/lib"
+	"github.com/sequra/s3deploy/lib"
 )
 
 var (
