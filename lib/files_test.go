@@ -6,10 +6,10 @@
 package lib
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
-	"os"
-	"path/filepath"
+	"path"
 	"strings"
 	"testing"
 
@@ -81,19 +81,20 @@ func (f testFile) Size() int64 {
 }
 
 func openTestFile(name string) (*osFile, error) {
-	wd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
+	rootPath := "/mylocalstore"
+	absName := path.Join(rootPath, name)
+	s := newTestLocalStore(rootPath,
+		newTestLocalFile(".s3deploy.yml", []byte("my test")),
+		newTestLocalFile("index.html", []byte("<html>s3deploy</html>\n")),
+		newTestLocalFile("ab.txt", []byte("AB\n")),
+		newTestLocalFile("main.css", []byte("ABC")),
+	)
 
-	relPath := filepath.Join("testdata", name)
-	absPath := filepath.Join(wd, relPath)
-	fi, err := os.Stat(absPath)
-	if err != nil {
-		return nil, err
+	f, ok := s.files[absName]
+	if !ok {
+		return nil, errors.New("Error opening file")
 	}
+	tmpFile := newTmpFile(f.relPath, absName, f.Size())
 
-	tmp := newTmpFile(relPath, absPath, fi.Size())
-	s := newOSStore()
-	return newOSFile(s, nil, "", tmp)
+	return newOSFile(s, nil, "", tmpFile)
 }

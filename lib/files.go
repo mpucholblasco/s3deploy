@@ -10,6 +10,7 @@ import (
 	"compress/gzip"
 	"crypto/md5"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -22,6 +23,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dsnet/golib/memfile"
 	"golang.org/x/text/unicode/norm"
@@ -360,4 +362,124 @@ func calculateETag(r io.Reader) (string, error) {
 		return "", err
 	}
 	return "\"" + hex.EncodeToString(h.Sum(nil)) + "\"", nil
+}
+
+// Testing files
+// Test local store and files
+type testLocalFile struct {
+	*bytes.Reader
+	relPath      string
+	size         int
+	errorOpening bool
+}
+
+func newTestLocalFile(relPath string, content []byte) *testLocalFile {
+	return &testLocalFile{
+		bytes.NewReader(content),
+		relPath,
+		len(content),
+		false,
+	}
+}
+
+func (f *testLocalFile) withErrorOpening(errorOpening bool) *testLocalFile {
+	f.errorOpening = errorOpening
+	return f
+}
+
+func (f testLocalFile) Name() string {
+	return path.Base(f.relPath)
+}
+
+func (f testLocalFile) Size() int64 {
+	return int64(f.size)
+}
+
+func (f testLocalFile) Mode() os.FileMode {
+	return 0777
+}
+
+func (f testLocalFile) ModTime() time.Time {
+	return time.Now()
+}
+
+func (f testLocalFile) IsDir() bool {
+	return false
+}
+
+func (f testLocalFile) Sys() interface{} {
+	return nil
+}
+
+func (f testLocalFile) Close() error {
+	return nil
+}
+
+type testLocalStore struct {
+	root  string
+	files map[string]*testLocalFile
+}
+
+func newTestLocalStore(root string, files ...*testLocalFile) *testLocalStore {
+	m := make(map[string]*testLocalFile, len(files))
+	for _, f := range files {
+		abs := path.Join(root, f.relPath)
+		m[abs] = f
+	}
+	return &testLocalStore{
+		root:  root,
+		files: m,
+	}
+}
+
+func (l *testLocalStore) Walk(root string, walkFn WalkFunc) error {
+	for _, f := range l.files {
+		path := path.Join(root, f.relPath)
+		if err := walkFn(path, f, nil); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (l *testLocalStore) IsHiddenDir(path string) bool {
+	return strings.HasPrefix(path, ".")
+}
+
+func (l *testLocalStore) IsIgnorableFilename(path string) bool {
+	return path == ".DS_Store"
+}
+
+func (l *testLocalStore) NormaliseName(path string) string {
+	return path
+}
+
+func (l *testLocalStore) Abs(p string) (string, error) {
+	if strings.HasPrefix(p, "/") {
+		return p, nil
+	}
+	return path.Join(l.root, p), nil
+}
+
+func (l *testLocalStore) Rel(basePath, path string) (string, error) {
+	return filepath.Rel(basePath, path)
+}
+
+func (l *testLocalStore) Ext(path string) string {
+	return filepath.Ext(path)
+}
+
+func (l *testLocalStore) ToSlash(path string) string {
+	return filepath.ToSlash(path)
+}
+
+func (l *testLocalStore) Open(path string) (io.ReadCloser, error) {
+	f, ok := l.files[path]
+	if !ok {
+		return nil, os.ErrNotExist
+	}
+	if f.errorOpening {
+		return nil, errors.New("Error opening file")
+	}
+	return f, nil
 }

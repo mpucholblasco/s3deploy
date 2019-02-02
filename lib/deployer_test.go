@@ -6,17 +6,14 @@
 package lib
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -52,7 +49,7 @@ func TestDeployWithBucketPath(t *testing.T) {
 	assert := require.New(t)
 	root := "my/path"
 	store, m := newTestRemoteStore(0, root)
-	ls :=  newTestLocalStore("/mylocalstore",
+	ls := newTestLocalStore("/mylocalstore",
 		newTestLocalFile("my/path/.s3deploy.yml", []byte("my test")),
 		newTestLocalFile("my/path/index.html", []byte("<html>s3deploy</html>\n")),
 		newTestLocalFile("my/path/ab.txt", []byte("AB\n")),
@@ -259,20 +256,13 @@ func TestDeployStoreFailures(t *testing.T) {
 		assert := require.New(t)
 
 		store, _ := newTestRemoteStore(i, "")
-		source := "/mylocalstore"
-
-		cfg := &Config{
-			BucketName: "example.com",
-			RegionName: "eu-west-1",
-			MaxDelete:  300,
-			Silent:     true,
-			SourcePath: source,
-			baseStore:  store,
-		}
 
 		message := fmt.Sprintf("Failure %d", i)
 
-		stats, err := Deploy(cfg)
+		d := newTestDeployer(newTestDefaultFileConfig(), newTestDefaultLocalStoreSample(), store)
+		assert.NoError(d.cfg.conf.CompileResources())
+
+		stats, err := d.deploy(context.Background(), runtime.NumCPU())
 		assert.Error(err)
 
 		if i == 3 {
@@ -452,56 +442,6 @@ func (s *testRemoteStore) Finalize() error {
 	return nil
 }
 
-// Test local store and files
-type testLocalFile struct {
-	*bytes.Reader
-	relPath      string
-	size         int
-	errorOpening bool
-}
-
-func newTestLocalFile(relPath string, content []byte) *testLocalFile {
-	return &testLocalFile{
-		bytes.NewReader(content),
-		relPath,
-		len(content),
-		false,
-	}
-}
-
-func (f *testLocalFile) withErrorOpening(errorOpening bool) *testLocalFile {
-	f.errorOpening = errorOpening
-	return f
-}
-
-func (f testLocalFile) Name() string {
-	return path.Base(f.relPath)
-}
-
-func (f testLocalFile) Size() int64 {
-	return int64(f.size)
-}
-
-func (f testLocalFile) Mode() os.FileMode {
-	return 0777
-}
-
-func (f testLocalFile) ModTime() time.Time {
-	return time.Now()
-}
-
-func (f testLocalFile) IsDir() bool {
-	return false
-}
-
-func (f testLocalFile) Sys() interface{} {
-	return nil
-}
-
-func (f testLocalFile) Close() error {
-	return nil
-}
-
 func newTestDeployer(fc *fileConfig, ls *testLocalStore, store remoteStore) *Deployer {
 	d := &Deployer{
 		cfg: &Config{
@@ -511,7 +451,7 @@ func newTestDeployer(fc *fileConfig, ls *testLocalStore, store remoteStore) *Dep
 			PublicReadACL: true,
 			Silent:        true,
 			SourcePath:    "/mylocalstore",
-			conf: *fc,
+			conf:          *fc,
 		},
 		outv:    ioutil.Discard,
 		printer: newPrinter(ioutil.Discard),
@@ -578,11 +518,6 @@ func newTestFileConfigWithOrder() *fileConfig {
 	}
 }
 
-type testLocalStore struct {
-	root  string
-	files map[string]*testLocalFile
-}
-
 func newTestDefaultLocalStoreSample() *testLocalStore {
 	return newTestLocalStore("/mylocalstore",
 		newTestLocalFile(".s3deploy.yml", []byte("my test")),
@@ -590,68 +525,4 @@ func newTestDefaultLocalStoreSample() *testLocalStore {
 		newTestLocalFile("ab.txt", []byte("AB\n")),
 		newTestLocalFile("main.css", []byte("ABC")),
 	)
-}
-
-func newTestLocalStore(root string, files ...*testLocalFile) *testLocalStore {
-	m := make(map[string]*testLocalFile, len(files))
-	for _, f := range files {
-		abs := path.Join(root, f.relPath)
-		m[abs] = f
-	}
-	return &testLocalStore{
-		root:  root,
-		files: m,
-	}
-}
-
-func (l *testLocalStore) Walk(root string, walkFn WalkFunc) error {
-	for _, f := range l.files {
-		path := path.Join(root, f.relPath)
-		if err := walkFn(path, f, nil); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (l *testLocalStore) IsHiddenDir(path string) bool {
-	return strings.HasPrefix(path, ".")
-}
-
-func (l *testLocalStore) IsIgnorableFilename(path string) bool {
-	return path == ".DS_Store"
-}
-
-func (l *testLocalStore) NormaliseName(path string) string {
-	return path
-}
-
-func (l *testLocalStore) Abs(p string) (string, error) {
-	if strings.HasPrefix(p, "/") {
-		return p, nil
-	}
-	return path.Join(l.root, p), nil
-}
-
-func (l *testLocalStore) Rel(basePath, path string) (string, error) {
-	return filepath.Rel(basePath, path)
-}
-
-func (l *testLocalStore) Ext(path string) string {
-	return filepath.Ext(path)
-}
-
-func (l *testLocalStore) ToSlash(path string) string {
-	return filepath.ToSlash(path)
-}
-
-func (l *testLocalStore) Open(path string) (io.ReadCloser, error) {
-	f, ok := l.files[path]
-	if !ok {
-		return nil, os.ErrNotExist
-	}
-	if f.errorOpening {
-		return nil, errors.New("Error opening file")
-	}
-	return f, nil
 }
