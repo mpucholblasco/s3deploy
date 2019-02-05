@@ -20,11 +20,11 @@ var (
 )
 
 type s3Store struct {
-	bucket string
-	r      routes
-	svc    *s3.S3
+	bucket        string
+	r             routes
+	svc           *s3.S3
 	publicReadACL bool
-	cfc *cloudFrontClient
+	cfc           *cloudFrontClient
 }
 
 type s3File struct {
