@@ -6,10 +6,8 @@
 package lib
 
 import (
-	"errors"
 	"fmt"
 	"io/ioutil"
-	"path"
 	"strings"
 	"testing"
 
@@ -19,7 +17,7 @@ import (
 func TestOSFile(t *testing.T) {
 	assert := require.New(t)
 
-	of, err := openTestFile("main.css")
+	of, err := getTestOSFile()
 	assert.NoError(err)
 
 	assert.Equal(int64(3), of.Size())
@@ -34,7 +32,7 @@ func TestOSFile(t *testing.T) {
 func TestShouldThisReplace(t *testing.T) {
 	assert := require.New(t)
 
-	of, err := openTestFile("main.css")
+	of, err := getTestOSFile()
 	assert.NoError(err)
 
 	correctETag := `"902fbdd2b1df0c4f70b4a5d23525e932"`
@@ -80,21 +78,10 @@ func (f testFile) Size() int64 {
 	return f.size
 }
 
-func openTestFile(name string) (*osFile, error) {
-	rootPath := "/mylocalstore"
-	absName := path.Join(rootPath, name)
-	s := newTestLocalStore(rootPath,
-		newTestLocalFile(".s3deploy.yml", []byte("my test")),
-		newTestLocalFile("index.html", []byte("<html>s3deploy</html>\n")),
-		newTestLocalFile("ab.txt", []byte("AB\n")),
-		newTestLocalFile("main.css", []byte("ABC")),
-	)
+func getTestOSFile() (*osFile, error) {
+	lf := newTestLocalFile("main.css", []byte("ABC"))
+	ls := newTestLocalStore("/mylocalstore", lf)
+	f := newTmpFile("main.css", "/mylocalstore/main.css", lf.Size())
 
-	f, ok := s.files[absName]
-	if !ok {
-		return nil, errors.New("Error opening file")
-	}
-	tmpFile := newTmpFile(f.relPath, absName, f.Size())
-
-	return newOSFile(s, nil, "", tmpFile)
+	return newOSFile(ls, nil, "", f)
 }

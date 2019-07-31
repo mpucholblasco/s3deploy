@@ -37,9 +37,9 @@ func TestDeploy(t *testing.T) {
 	assert.Equal("Deleted 1 of 1, uploaded 3, skipped 1 (80% changed)", stats.Summary())
 	assertKeys(t, m, ".s3deploy.yml", "main.css", "index.html", "ab.txt")
 
-	mainCss := m["main.css"]
-	assert.IsType(&osFile{}, mainCss)
-	headers := mainCss.(*osFile).Headers()
+	mainCSS := m["main.css"]
+	assert.IsType(&osFile{}, mainCSS)
+	headers := mainCSS.(*osFile).Headers()
 	assert.Equal("gzip", headers["Content-Encoding"])
 	assert.Equal("text/css; charset=utf-8", headers["Content-Type"])
 	assert.Equal("max-age=630720000, no-transform, public", headers["Cache-Control"])
@@ -49,6 +49,7 @@ func TestDeployWithBucketPath(t *testing.T) {
 	assert := require.New(t)
 	root := "my/path"
 	store, m := newTestRemoteStore(0, root)
+
 	ls := newTestLocalStore("/mylocalstore",
 		newTestLocalFile("my/path/.s3deploy.yml", []byte("my test")),
 		newTestLocalFile("my/path/index.html", []byte("<html>s3deploy</html>\n")),
@@ -256,7 +257,6 @@ func TestDeployStoreFailures(t *testing.T) {
 		assert := require.New(t)
 
 		store, _ := newTestRemoteStore(i, "")
-
 		message := fmt.Sprintf("Failure %d", i)
 
 		d := newTestDeployer(newTestDefaultFileConfig(), newTestDefaultLocalStoreSample(), store)
@@ -284,6 +284,7 @@ func TestDeployMaxDelete(t *testing.T) {
 	}
 
 	store := newTestRemoteStoreFrom(m, 0)
+	store.delayMillis = 5
 
 	d := newTestDeployer(newTestDefaultFileConfig(), newTestDefaultLocalStoreSample(), store)
 	d.cfg.MaxDelete = 42

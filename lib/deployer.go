@@ -246,7 +246,6 @@ func (d *Deployer) plan(ctx context.Context, localFiles []*tmpFile, remoteFiles 
 	}
 
 	close(filesToUpload)
-
 	return nil
 }
 
