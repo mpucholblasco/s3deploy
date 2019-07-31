@@ -6,7 +6,6 @@
 package lib
 
 import (
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"strings"
