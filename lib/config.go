@@ -35,11 +35,11 @@ type Config struct {
 
 	NumberOfWorkers int
 	MaxDelete       int
-	PublicReadACL bool
-	Verbose bool
-	Silent  bool
-	Force   bool
-	Try     bool
+	PublicReadACL   bool
+	Verbose         bool
+	Silent          bool
+	Force           bool
+	Try             bool
 
 	// CLI state
 	PrintVersion bool
