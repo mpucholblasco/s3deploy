@@ -25,8 +25,6 @@ Pre-built binaries can be found [here](https://github.com/sequra/s3deploy/releas
  brew install sequra/tap/s3deploy
  ```
 
-Note that `s3deploy` is a perfect tool to use with a continuous integration tool such as [CircleCI](https://circleci.com/). See [this static site](https://github.com/sequra/bego.io) for a simple example of automated depoloyment of a Hugo site to Amazon S3 via `s3deploy`.  The most relevant files are [circle.yml](https://github.com/sequra/bego.io/blob/master/circle.yml) and [.s3deploy.yml](https://github.com/sequra/bego.io/blob/master/.s3deploy.yml). For another example, see [this](https://mostlygeek.com/posts/hugo-circle-s3-hosting/) tutorial that uses s3deploy with CircleCI.
-
 ## Use
 
 ```bash
