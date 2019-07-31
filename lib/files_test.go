@@ -8,8 +8,6 @@ package lib
 import (
 	"fmt"
 	"io/ioutil"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -19,7 +17,7 @@ import (
 func TestOSFile(t *testing.T) {
 	assert := require.New(t)
 
-	of, err := openTestFile("main.css")
+	of, err := getTestOSFile()
 	assert.NoError(err)
 
 	assert.Equal(int64(3), of.Size())
@@ -34,7 +32,7 @@ func TestOSFile(t *testing.T) {
 func TestShouldThisReplace(t *testing.T) {
 	assert := require.New(t)
 
-	of, err := openTestFile("main.css")
+	of, err := getTestOSFile()
 	assert.NoError(err)
 
 	correctETag := `"902fbdd2b1df0c4f70b4a5d23525e932"`
@@ -80,20 +78,10 @@ func (f testFile) Size() int64 {
 	return f.size
 }
 
-func openTestFile(name string) (*osFile, error) {
-	wd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
+func getTestOSFile() (*osFile, error) {
+	lf := newTestLocalFile("main.css", []byte("ABC"))
+	ls := newTestLocalStore("/mylocalstore", lf)
+	f := newTmpFile("main.css", "/mylocalstore/main.css", lf.Size())
 
-	relPath := filepath.Join("testdata", name)
-	absPath := filepath.Join(wd, relPath)
-	fi, err := os.Stat(absPath)
-	if err != nil {
-		return nil, err
-	}
-
-	tmp := newTmpFile(relPath, absPath, fi.Size())
-	s := newOSStore()
-	return newOSFile(s, nil, "", tmp)
+	return newOSFile(ls, nil, "", f)
 }

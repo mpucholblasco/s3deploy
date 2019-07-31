@@ -31,28 +31,43 @@ var (
 func TestDeploy(t *testing.T) {
 	assert := require.New(t)
 	store, m := newTestRemoteStore(0, "")
-	source := testSourcePath()
-	configFile := filepath.Join(source, ".s3deploy.yml")
+	store.delayMillis = 5
 
-	cfg := &Config{
-		BucketName: "example.com",
-		RegionName: "eu-west-1",
-		ConfigFile: configFile,
-		MaxDelete:  300,
-		PublicReadACL: true,
-		Silent:     true,
-		SourcePath: source,
-		baseStore:  store,
+	ls := newTestLocalStore("/mylocalstore",
+		newTestLocalFile(".s3deploy.yml", []byte("my test")),
+		newTestLocalFile("index.html", []byte("<html>s3deploy</html>\n")),
+		newTestLocalFile("ab.txt", []byte("AB\n")),
+		newTestLocalFile("main.css", []byte("ABC")),
+	)
+
+	d := &Deployer{
+		cfg: &Config{
+			BucketName: "example.com",
+			RegionName: "eu-west-1",
+			MaxDelete:  300,
+			Silent:     true,
+			SourcePath: "/mylocalstore",
+			conf: fileConfig{
+				Routes: getTestRoutes(),
+			},
+		},
+		outv:    ioutil.Discard,
+		printer: newPrinter(ioutil.Discard),
+		stats:   &DeployStats{},
+		local:   ls,
 	}
+	d.store = newStore(*d.cfg, store)
 
-	stats, err := Deploy(cfg)
+	assert.NoError(d.cfg.conf.CompileResources())
+
+	stats, err := d.deploy(context.Background(), runtime.NumCPU())
 	assert.NoError(err)
 	assert.Equal("Deleted 1 of 1, uploaded 3, skipped 1 (80% changed)", stats.Summary())
 	assertKeys(t, m, ".s3deploy.yml", "main.css", "index.html", "ab.txt")
 
-	mainCss := m["main.css"]
-	assert.IsType(&osFile{}, mainCss)
-	headers := mainCss.(*osFile).Headers()
+	mainCSS := m["main.css"]
+	assert.IsType(&osFile{}, mainCSS)
+	headers := mainCSS.(*osFile).Headers()
 	assert.Equal("gzip", headers["Content-Encoding"])
 	assert.Equal("text/css; charset=utf-8", headers["Content-Type"])
 	assert.Equal("max-age=630720000, no-transform, public", headers["Cache-Control"])
@@ -62,28 +77,44 @@ func TestDeployWithBucketPath(t *testing.T) {
 	assert := require.New(t)
 	root := "my/path"
 	store, m := newTestRemoteStore(0, root)
-	source := testSourcePath()
-	configFile := filepath.Join(source, ".s3deploy.yml")
+	store.delayMillis = 5
 
-	cfg := &Config{
-		BucketName: "example.com",
-		RegionName: "eu-west-1",
-		ConfigFile: configFile,
-		BucketPath: root,
-		MaxDelete:  300,
-		Silent:     false,
-		SourcePath: source,
-		baseStore:  store,
+	ls := newTestLocalStore("/mylocalstore",
+		newTestLocalFile(".s3deploy.yml", []byte("my test")),
+		newTestLocalFile("index.html", []byte("<html>s3deploy</html>\n")),
+		newTestLocalFile("ab.txt", []byte("AB\n")),
+		newTestLocalFile("main.css", []byte("ABC")),
+	)
+
+	d := &Deployer{
+		cfg: &Config{
+			BucketName: "example.com",
+			BucketPath: root,
+			RegionName: "eu-west-1",
+			MaxDelete:  300,
+			Silent:     true,
+			SourcePath: "/mylocalstore",
+			conf: fileConfig{
+				Routes: getTestRoutes(),
+			},
+		},
+		outv:    ioutil.Discard,
+		printer: newPrinter(ioutil.Discard),
+		stats:   &DeployStats{},
+		local:   ls,
 	}
+	d.store = newStore(*d.cfg, store)
 
-	stats, err := Deploy(cfg)
+	assert.NoError(d.cfg.conf.CompileResources())
+
+	stats, err := d.deploy(context.Background(), runtime.NumCPU())
 	assert.NoError(err)
 	assert.Equal("Deleted 1 of 1, uploaded 3, skipped 1 (80% changed)", stats.Summary())
 	assertKeys(t, m, "my/path/.s3deploy.yml", "my/path/main.css", "my/path/index.html", "my/path/ab.txt")
-	mainCss := m["my/path/main.css"]
-	assert.IsType(&osFile{}, mainCss)
-	assert.Equal("my/path/main.css", mainCss.(*osFile).Key())
-	headers := mainCss.(*osFile).Headers()
+	mainCSS := m["my/path/main.css"]
+	assert.IsType(&osFile{}, mainCSS)
+	assert.Equal("my/path/main.css", mainCSS.(*osFile).Key())
+	headers := mainCSS.(*osFile).Headers()
 	assert.Equal("gzip", headers["Content-Encoding"])
 
 }
@@ -108,26 +139,7 @@ func TestDeployOrder(t *testing.T) {
 			Silent:     true,
 			SourcePath: "/mylocalstore",
 			conf: fileConfig{
-				Routes: []*route{
-					&route{
-						Route: "^.+\\.(js|css|svg|ttf)$",
-						Headers: map[string]string{
-							"Cache-Control": "max-age=630720000, no-transform, public",
-						},
-						Gzip: true,
-					},
-					&route{
-						Route: "^.+\\.(png|jpg)$",
-						Headers: map[string]string{
-							"Cache-Control": "max-age=630720000, no-transform, public",
-						},
-						Gzip: true,
-					},
-					&route{
-						Route: "^.+\\.(html|xml|json)$",
-						Gzip:  true,
-					},
-				},
+				Routes: getTestRoutes(),
 				Order: []string{
 					"^myemptygroup$",
 					"^index\\.html$",
@@ -223,20 +235,36 @@ func TestDeployOrderErrorOpeningFile(t *testing.T) {
 func TestDeleteAfterAllUploadsOnDeploy(t *testing.T) {
 	assert := require.New(t)
 	store, m := newTestRemoteStore(0, "")
-	source := testSourcePath()
-	configFile := filepath.Join(source, ".s3deploy.yml")
+	store.delayMillis = 5
 
-	cfg := &Config{
-		BucketName: "example.com",
-		RegionName: "eu-west-1",
-		ConfigFile: configFile,
-		MaxDelete:  300,
-		Silent:     true,
-		SourcePath: source,
-		baseStore:  store,
+	ls := newTestLocalStore("/mylocalstore",
+		newTestLocalFile(".s3deploy.yml", []byte("my test")),
+		newTestLocalFile("index.html", []byte("<html>s3deploy</html>\n")),
+		newTestLocalFile("ab.txt", []byte("AB\n")),
+		newTestLocalFile("main.css", []byte("ABC")),
+	)
+
+	d := &Deployer{
+		cfg: &Config{
+			BucketName: "example.com",
+			RegionName: "eu-west-1",
+			MaxDelete:  300,
+			Silent:     true,
+			SourcePath: "/mylocalstore",
+			conf: fileConfig{
+				Routes: getTestRoutes(),
+			},
+		},
+		outv:    ioutil.Discard,
+		printer: newPrinter(ioutil.Discard),
+		stats:   &DeployStats{},
+		local:   ls,
 	}
+	d.store = newStore(*d.cfg, store)
 
-	stats, err := Deploy(cfg)
+	assert.NoError(d.cfg.conf.CompileResources())
+
+	stats, err := d.deploy(context.Background(), runtime.NumCPU())
 	assert.NoError(err)
 	assert.Equal("Deleted 1 of 1, uploaded 3, skipped 1 (80% changed)", stats.Summary())
 	assertKeys(t, m, ".s3deploy.yml", "main.css", "index.html", "ab.txt")
@@ -305,19 +333,37 @@ func TestGroupLocalFiles(t *testing.T) {
 func TestDeployForce(t *testing.T) {
 	assert := require.New(t)
 	store, _ := newTestRemoteStore(0, "")
-	source := testSourcePath()
+	store.delayMillis = 5
 
-	cfg := &Config{
-		BucketName: "example.com",
-		RegionName: "eu-west-1",
-		Force:      true,
-		MaxDelete:  300,
-		Silent:     true,
-		SourcePath: source,
-		baseStore:  store,
+	ls := newTestLocalStore("/mylocalstore",
+		newTestLocalFile(".s3deploy.yml", []byte("my test")),
+		newTestLocalFile("index.html", []byte("<html>s3deploy</html>\n")),
+		newTestLocalFile("ab.txt", []byte("AB\n")),
+		newTestLocalFile("main.css", []byte("ABC")),
+	)
+
+	d := &Deployer{
+		cfg: &Config{
+			BucketName: "example.com",
+			RegionName: "eu-west-1",
+			MaxDelete:  300,
+			Silent:     true,
+			Force:      true,
+			SourcePath: "/mylocalstore",
+			conf: fileConfig{
+				Routes: getTestRoutes(),
+			},
+		},
+		outv:    ioutil.Discard,
+		printer: newPrinter(ioutil.Discard),
+		stats:   &DeployStats{},
+		local:   ls,
 	}
+	d.store = newStore(*d.cfg, store)
 
-	stats, err := Deploy(cfg)
+	assert.NoError(d.cfg.conf.CompileResources())
+
+	stats, err := d.deploy(context.Background(), runtime.NumCPU())
 	assert.NoError(err)
 	assert.Equal("Deleted 1 of 1, uploaded 4, skipped 0 (100% changed)", stats.Summary())
 }
@@ -380,20 +426,38 @@ func TestDeployStoreFailures(t *testing.T) {
 		assert := require.New(t)
 
 		store, _ := newTestRemoteStore(i, "")
-		source := testSourcePath()
+		store.delayMillis = 5
 
-		cfg := &Config{
-			BucketName: "example.com",
-			RegionName: "eu-west-1",
-			MaxDelete:  300,
-			Silent:     true,
-			SourcePath: source,
-			baseStore:  store,
+		ls := newTestLocalStore("/mylocalstore",
+			newTestLocalFile(".s3deploy.yml", []byte("my test")),
+			newTestLocalFile("index.html", []byte("<html>s3deploy</html>\n")),
+			newTestLocalFile("ab.txt", []byte("AB\n")),
+			newTestLocalFile("main.css", []byte("ABC")),
+		)
+
+		d := &Deployer{
+			cfg: &Config{
+				BucketName: "example.com",
+				RegionName: "eu-west-1",
+				MaxDelete:  300,
+				Silent:     true,
+				SourcePath: "/mylocalstore",
+				conf: fileConfig{
+					Routes: getTestRoutes(),
+				},
+			},
+			outv:    ioutil.Discard,
+			printer: newPrinter(ioutil.Discard),
+			stats:   &DeployStats{},
+			local:   ls,
 		}
+		d.store = newStore(*d.cfg, store)
+
+		assert.NoError(d.cfg.conf.CompileResources())
 
 		message := fmt.Sprintf("Failure %d", i)
 
-		stats, err := Deploy(cfg)
+		stats, err := d.deploy(context.Background(), runtime.NumCPU())
 		assert.Error(err)
 
 		if i == 3 {
@@ -415,26 +479,63 @@ func TestDeployMaxDelete(t *testing.T) {
 	}
 
 	store := newTestRemoteStoreFrom(m, 0)
+	store.delayMillis = 5
 
-	cfg := &Config{
-		BucketName: "example.com",
-		RegionName: "eu-west-1",
-		Silent:     true,
-		SourcePath: testSourcePath(),
-		MaxDelete:  42,
-		baseStore:  store,
+	ls := newTestLocalStore("/mylocalstore",
+		newTestLocalFile(".s3deploy.yml", []byte("my test")),
+		newTestLocalFile("index.html", []byte("<html>s3deploy</html>\n")),
+		newTestLocalFile("ab.txt", []byte("AB\n")),
+		newTestLocalFile("main.css", []byte("ABC")),
+	)
+
+	d := &Deployer{
+		cfg: &Config{
+			BucketName: "example.com",
+			RegionName: "eu-west-1",
+			MaxDelete:  42,
+			Silent:     true,
+			SourcePath: "/mylocalstore",
+			conf: fileConfig{
+				Routes: getTestRoutes(),
+			},
+		},
+		outv:    ioutil.Discard,
+		printer: newPrinter(ioutil.Discard),
+		stats:   &DeployStats{},
+		local:   ls,
 	}
+	d.store = newStore(*d.cfg, store)
 
-	stats, err := Deploy(cfg)
+	assert.NoError(d.cfg.conf.CompileResources())
+
+	stats, err := d.deploy(context.Background(), runtime.NumCPU())
 	assert.NoError(err)
 	assert.Equal(158+4, len(m))
 	assert.Equal("Deleted 42 of 200, uploaded 4, skipped 0 (100% changed)", stats.Summary())
 
 }
 
-func testSourcePath() string {
-	wd, _ := os.Getwd()
-	return filepath.Join(wd, "testdata") + "/"
+func getTestRoutes() []*route {
+	return []*route{
+		&route{
+			Route: "^.+\\.(js|css|svg|ttf)$",
+			Headers: map[string]string{
+				"Cache-Control": "max-age=630720000, no-transform, public",
+			},
+			Gzip: true,
+		},
+		&route{
+			Route: "^.+\\.(png|jpg)$",
+			Headers: map[string]string{
+				"Cache-Control": "max-age=630720000, no-transform, public",
+			},
+			Gzip: true,
+		},
+		&route{
+			Route: "^.+\\.(html|xml|json)$",
+			Gzip:  true,
+		},
+	}
 }
 
 func newTestRemoteStore(failAt int, root string) (*testRemoteStore, map[string]file) {

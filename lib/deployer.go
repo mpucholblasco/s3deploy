@@ -246,12 +246,6 @@ func (d *Deployer) plan(ctx context.Context, localFiles []*tmpFile, remoteFiles 
 	}
 
 	close(filesToUpload)
-
-	// any remote files not found locally should be removed:
-	for key := range remoteFiles {
-		d.enqueueDelete(key)
-	}
-
 	return nil
 }
 

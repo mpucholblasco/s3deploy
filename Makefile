@@ -1,3 +1,6 @@
+test:
+	go test -short ./...
+
 build:
 	go build
 
